@@ -1,0 +1,11 @@
+probe_name: "tokyo-1"
+config_url: "https://raw.githubusercontent.com/user/repo/main/targets.json"
+config_refresh_interval: "60s"
+push_interval: "60s"
+cache_dir: "/var/lib/probe-agent"
+metric_prefix: "gt_"
+
+grafana_cloud:
+  remote_write_url: "https://prometheus-prod-XX-prod-us-central-0.grafana.net/api/prom/push"
+  username: "123456"
+  api_key: "glc_xxxxx..."
