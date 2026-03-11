@@ -265,8 +265,8 @@ func marshalSample(s sample) []byte {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], math.Float64bits(s.Value))
 	b = append(b, buf[:]...)
-	// field 2: int64 timestamp_ms (wire type 0 = varint)
-	b = appendVarint(b, uint64(2<<3|0))
+	// field 2: int64 timestamp_ms (wire type 0 = varint, tag = 2<<3|0)
+	b = appendVarint(b, uint64(2<<3))
 	b = appendVarint(b, uint64(s.TimestampMs))
 	return b
 }

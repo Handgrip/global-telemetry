@@ -98,7 +98,7 @@ func (p *HTTPProbe) Run(ctx context.Context, target config.Target, timeout time.
 		}, nil
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	var tlsExpiry time.Time
 	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
