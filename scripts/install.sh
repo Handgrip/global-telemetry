@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Global Probe Agent - One-click installer
-# Usage: curl -sSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/Handgrip/global-telemetry/main/scripts/install.sh | bash
 
 REPO="Handgrip/global-telemetry"
 INSTALL_DIR="/usr/local/bin"
@@ -58,7 +58,7 @@ setup_config() {
     if [ ! -f "${CONFIG_DIR}/agent.yaml" ]; then
         cat > "${CONFIG_DIR}/agent.yaml" <<'YAML'
 probe_name: "changeme"
-config_url: "https://raw.githubusercontent.com/OWNER/REPO/main/targets.json"
+config_url: "https://raw.githubusercontent.com/Handgrip/global-telemetry/main/target.json"
 config_refresh_interval: "60s"
 push_interval: "60s"
 cache_dir: "/var/lib/probe-agent"
