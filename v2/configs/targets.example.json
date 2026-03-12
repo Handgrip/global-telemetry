@@ -1,0 +1,58 @@
+[
+  {
+    "targets": ["1.1.1.1"],
+    "labels": {
+      "__param_module": "icmp",
+      "name": "cloudflare-dns",
+      "provider": "cloudflare"
+    }
+  },
+  {
+    "targets": ["8.8.8.8"],
+    "labels": {
+      "__param_module": "icmp",
+      "name": "google-dns",
+      "provider": "google"
+    }
+  },
+  {
+    "targets": ["https://www.example.com"],
+    "labels": {
+      "__param_module": "http_2xx",
+      "name": "example-web",
+      "category": "web"
+    }
+  },
+  {
+    "targets": ["https://www.baidu.com"],
+    "labels": {
+      "__param_module": "http_2xx_strict_tls",
+      "name": "baidu-tls",
+      "category": "web"
+    }
+  },
+  {
+    "targets": ["https://http.cat/401"],
+    "labels": {
+      "__param_module": "http_auth_check",
+      "name": "api-auth",
+      "category": "api"
+    }
+  },
+  {
+    "targets": ["example.com:443"],
+    "labels": {
+      "__param_module": "tcp_tls",
+      "name": "example-tls-port",
+      "category": "infra"
+    }
+  },
+  {
+    "targets": ["8.8.8.8"],
+    "labels": {
+      "__param_module": "dns_udp",
+      "name": "google-dns-resolve",
+      "category": "dns"
+    }
+  }
+]

@@ -1,0 +1,97 @@
+# OpenTelemetry Collector Configuration
+# Managed by install.sh — manual edits will be preserved on re-install.
+
+extensions:
+  basicauth/grafana:
+    client_auth:
+      username: "${env:GRAFANA_USERNAME}"
+      password: "${env:GRAFANA_API_KEY}"
+
+receivers:
+  # ── Blackbox Exporter scraping via Prometheus protocol ──
+  prometheus:
+    config:
+      scrape_configs:
+        # Probe targets discovered from remote targets.json (http_sd)
+        - job_name: blackbox
+          metrics_path: /probe
+          scrape_interval: 30s
+          scrape_timeout: 15s
+          http_sd_configs:
+            - url: "${env:TARGETS_URL}"
+              refresh_interval: 60s
+          relabel_configs:
+            # __address__ from SD becomes ?target= param
+            - source_labels: [__address__]
+              target_label: __param_target
+            # Use the target as the instance label
+            - source_labels: [__param_target]
+              target_label: instance
+            # __param_module is already set from SD labels
+            # Route all scrapes to blackbox-exporter
+            - target_label: __address__
+              replacement: 127.0.0.1:9115
+
+        # Blackbox-exporter own metrics (health)
+        - job_name: blackbox-exporter
+          scrape_interval: 60s
+          static_configs:
+            - targets: ["127.0.0.1:9115"]
+
+  # ── Host health metrics ──
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      disk: {}
+      filesystem: {}
+      load: {}
+      network: {}
+      paging: {}
+      processes: {}
+
+processors:
+  # Detect host information (hostname, OS, etc.)
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: ["os"]
+
+  # Attach probe_name label to all metrics
+  resource/probe:
+    attributes:
+      - key: probe_name
+        value: "${env:PROBE_NAME}"
+        action: upsert
+
+  batch:
+    timeout: 60s
+    send_batch_size: 1000
+
+exporters:
+  prometheusremotewrite:
+    endpoint: "${env:REMOTE_WRITE_URL}"
+    auth:
+      authenticator: basicauth/grafana
+    external_labels:
+      probe_name: "${env:PROBE_NAME}"
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  extensions: [basicauth/grafana]
+  pipelines:
+    metrics:
+      receivers: [prometheus, hostmetrics]
+      processors: [resourcedetection, resource/probe, batch]
+      exporters: [prometheusremotewrite]
+  telemetry:
+    logs:
+      level: info

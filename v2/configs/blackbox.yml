@@ -1,0 +1,123 @@
+modules:
+  # ── ICMP ────────────────────────────────────────────────
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+
+  icmp6:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip6
+      ip_protocol_fallback: false
+
+  # ── HTTP ────────────────────────────────────────────────
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: []
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      follow_redirects: true
+      enable_http2: true
+
+  http_post_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: POST
+      valid_status_codes: []
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+
+  # Strict TLS — fails if target is NOT using SSL or cert is invalid
+  http_2xx_strict_tls:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: []
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      follow_redirects: true
+      fail_if_not_ssl: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # Auth-protected endpoints — 401/403 means the service is alive
+  http_auth_check:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: [401, 403]
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+
+  # ── TCP ─────────────────────────────────────────────────
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+
+  tcp_tls:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      tls: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # ── DNS ─────────────────────────────────────────────────
+  # Target = DNS server address (e.g. 8.8.8.8, 1.1.1.1)
+  # query_name is what to resolve; override per-module or define custom modules
+  dns_udp:
+    prober: dns
+    timeout: 5s
+    dns:
+      preferred_ip_protocol: ip4
+      query_name: "google.com"
+      query_type: "A"
+      transport_protocol: udp
+      recursion_desired: true
+      valid_rcodes:
+        - NOERROR
+
+  dns_tcp:
+    prober: dns
+    timeout: 5s
+    dns:
+      preferred_ip_protocol: ip4
+      query_name: "google.com"
+      query_type: "A"
+      transport_protocol: tcp
+      recursion_desired: true
+      valid_rcodes:
+        - NOERROR
+
+  # ── gRPC ────────────────────────────────────────────────
+  grpc:
+    prober: grpc
+    timeout: 5s
+    grpc:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+
+  grpc_tls:
+    prober: grpc
+    timeout: 5s
+    grpc:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      tls: true
+      tls_config:
+        insecure_skip_verify: false
