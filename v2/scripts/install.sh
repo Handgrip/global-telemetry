@@ -25,6 +25,16 @@ ask()   { echo -en "${CYAN}[?]${NC} $1: "; }
 
 need_cmd() { command -v "$1" &>/dev/null || error "Required command not found: $1"; }
 
+stop_service_if_running() {
+    local svc="$1"
+    if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
+        if systemctl is-active --quiet "${svc}.service" 2>/dev/null; then
+            info "Stopping ${svc} before upgrade ..."
+            systemctl stop "${svc}.service"
+        fi
+    fi
+}
+
 # ─── Platform Detection ──────────────────────────────────
 
 detect_platform() {
@@ -157,6 +167,9 @@ install_blackbox_exporter() {
     tmpdir="$(mktemp -d)"
     curl -sSL -o "${tmpdir}/${tarball}" "$url"
     tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+
+    stop_service_if_running blackbox-exporter
+    rm -f "${INSTALL_DIR}/blackbox_exporter"
     cp "${tmpdir}/blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}/blackbox_exporter" "${INSTALL_DIR}/blackbox_exporter"
     chmod +x "${INSTALL_DIR}/blackbox_exporter"
     rm -rf "$tmpdir"
@@ -190,6 +203,9 @@ install_otelcol_contrib() {
     tmpdir="$(mktemp -d)"
     curl -sSL -o "${tmpdir}/${tarball}" "$url"
     tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+
+    stop_service_if_running otel-collector
+    rm -f "${INSTALL_DIR}/otelcol-contrib"
     cp "${tmpdir}/otelcol-contrib" "${INSTALL_DIR}/otelcol-contrib"
     chmod +x "${INSTALL_DIR}/otelcol-contrib"
     rm -rf "$tmpdir"
