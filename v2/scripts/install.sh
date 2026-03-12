@@ -12,7 +12,7 @@ ENV_FILE="${CONFIG_DIR}/env"
 BLACKBOX_VERSION="0.25.0"
 OTELCOL_VERSION="0.120.0"
 
-REPO_RAW="https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/configs"
+GITHUB_REPO="Handgrip/global-telemetry"
 
 # ─── Helpers ──────────────────────────────────────────────
 
@@ -24,6 +24,26 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 ask()   { echo -en "${CYAN}[?]${NC} $1: "; }
 
 need_cmd() { command -v "$1" &>/dev/null || error "Required command not found: $1"; }
+
+# Detect the latest git tag via GitHub API.
+# Config files use the tag to bust jsDelivr cache; targets keep @main.
+detect_repo_tag() {
+    local api_url="https://api.github.com/repos/${GITHUB_REPO}/tags?per_page=1"
+    local tag
+    tag=$(curl -sSL "$api_url" 2>/dev/null \
+        | sed -n 's/.*"name" *: *"\([^"]*\)".*/\1/p' \
+        | head -1) || true
+
+    if [[ -z "$tag" ]]; then
+        warn "Could not detect latest tag from GitHub API, falling back to 'main'"
+        REPO_TAG="main"
+    else
+        REPO_TAG="$tag"
+        info "Latest release tag: ${REPO_TAG}"
+    fi
+
+    REPO_RAW="https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${REPO_TAG}/v2/configs"
+}
 
 stop_service_if_running() {
     local svc="$1"
@@ -59,43 +79,35 @@ detect_platform() {
 
 # ─── Configuration ────────────────────────────────────────
 
-DEFAULT_TARGETS_URL="https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/configs/targets.example.json"
+# Targets are dynamic data — @main is intentional (cache staleness is acceptable)
+DEFAULT_TARGETS_URL="https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/v2/configs/targets.example.json"
 
 # Read a value: use env var if set, otherwise prompt interactively.
-#   read_val VAR_NAME "prompt text" [required|optional]
+#   read_val VAR_NAME "prompt text" [required|optional|secret]
+#   "secret" implies required + hidden input
 read_val() {
-    local var_name="$1" prompt="$2" required="${3:-required}"
+    local var_name="$1" prompt="$2" mode="${3:-required}"
+    local secret=false
+    [[ "$mode" == "secret" ]] && secret=true
     local current="${!var_name:-}"
 
     if [[ -n "$current" ]]; then
-        info "${prompt}: ${current} (from env)"
+        $secret && info "${prompt}: ******* (from env)" \
+                || info "${prompt}: ${current} (from env)"
         return
     fi
 
     ask "$prompt"
-    read -r "$var_name" <&3
+    if $secret; then
+        read -rs "$var_name" <&3; echo ""
+    else
+        read -r "$var_name" <&3
+    fi
     current="${!var_name:-}"
 
-    if [[ "$required" == "required" && -z "$current" ]]; then
+    if [[ "$mode" != "optional" && -z "$current" ]]; then
         error "${prompt} is required"
     fi
-}
-
-# Same as read_val but hides input (for secrets)
-read_secret() {
-    local var_name="$1" prompt="$2"
-    local current="${!var_name:-}"
-
-    if [[ -n "$current" ]]; then
-        info "${prompt}: ******* (from env)"
-        return
-    fi
-
-    ask "$prompt"
-    read -rs "$var_name" <&3
-    echo ""
-    current="${!var_name:-}"
-    [[ -z "$current" ]] && error "${prompt} is required"
 }
 
 collect_config() {
@@ -135,9 +147,9 @@ collect_config() {
     echo ""
     echo "  ── Grafana Cloud Credentials ──"
     echo ""
-    read_val    REMOTE_WRITE_URL  "Prometheus Remote Write URL"
-    read_val    GRAFANA_USERNAME  "Grafana Cloud Username (Metrics instance ID)"
-    read_secret GRAFANA_API_KEY   "Grafana Cloud API Key"
+    read_val  REMOTE_WRITE_URL  "Prometheus Remote Write URL"
+    read_val  GRAFANA_USERNAME  "Grafana Cloud Username (Metrics instance ID)"
+    read_val  GRAFANA_API_KEY   "Grafana Cloud API Key" secret
 
     exec 3<&-
     echo ""
@@ -146,71 +158,50 @@ collect_config() {
 
 # ─── Download & Install Binaries ─────────────────────────
 
-install_blackbox_exporter() {
+# Generic installer: install_binary NAME VERSION SERVICE_NAME URL BIN_IN_ARCHIVE
+#   BIN_IN_ARCHIVE = path to the binary inside the extracted tarball (relative)
+install_binary() {
+    local name="$1" version="$2" service_name="$3" url="$4" bin_in_archive="$5"
+
     local installed_ver=""
-    if [[ -x "${INSTALL_DIR}/blackbox_exporter" ]]; then
-        installed_ver=$("${INSTALL_DIR}/blackbox_exporter" --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || true)
+    if [[ -x "${INSTALL_DIR}/${name}" ]]; then
+        installed_ver=$("${INSTALL_DIR}/${name}" --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
     fi
 
-    if [[ "$installed_ver" == "$BLACKBOX_VERSION" ]]; then
-        info "blackbox_exporter v${BLACKBOX_VERSION} already installed, skipping."
+    if [[ "$installed_ver" == "$version" ]]; then
+        info "${name} v${version} already installed, skipping."
         return
     fi
 
-    [[ -n "$installed_ver" ]] && info "Upgrading blackbox_exporter v${installed_ver} → v${BLACKBOX_VERSION} ..."
-    [[ -z "$installed_ver" ]] && info "Downloading blackbox_exporter v${BLACKBOX_VERSION} ..."
-
-    local tarball="blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}.tar.gz"
-    local url="https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_VERSION}/${tarball}"
+    [[ -n "$installed_ver" ]] && info "Upgrading ${name} v${installed_ver} → v${version} ..."
+    [[ -z "$installed_ver" ]] && info "Downloading ${name} v${version} ..."
 
     local tmpdir
     tmpdir="$(mktemp -d)"
-    curl -sSL -o "${tmpdir}/${tarball}" "$url"
-    tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+    curl -sSL -o "${tmpdir}/archive.tar.gz" "$url"
+    tar -xzf "${tmpdir}/archive.tar.gz" -C "$tmpdir"
 
-    stop_service_if_running blackbox-exporter
-    rm -f "${INSTALL_DIR}/blackbox_exporter"
-    cp "${tmpdir}/blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}/blackbox_exporter" "${INSTALL_DIR}/blackbox_exporter"
-    chmod +x "${INSTALL_DIR}/blackbox_exporter"
+    stop_service_if_running "$service_name"
+    rm -f "${INSTALL_DIR}/${name}"
+    cp "${tmpdir}/${bin_in_archive}" "${INSTALL_DIR}/${name}"
+    chmod +x "${INSTALL_DIR}/${name}"
     rm -rf "$tmpdir"
 
-    info "blackbox_exporter v${BLACKBOX_VERSION} installed to ${INSTALL_DIR}/blackbox_exporter"
+    info "${name} v${version} installed to ${INSTALL_DIR}/${name}"
+}
+
+install_blackbox_exporter() {
+    local tarball="blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}.tar.gz"
+    local url="https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_VERSION}/${tarball}"
+    install_binary "blackbox_exporter" "$BLACKBOX_VERSION" "blackbox-exporter" \
+        "$url" "blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}/blackbox_exporter"
 }
 
 install_otelcol_contrib() {
-    local installed_ver=""
-    if [[ -x "${INSTALL_DIR}/otelcol-contrib" ]]; then
-        installed_ver=$("${INSTALL_DIR}/otelcol-contrib" --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || true)
-    fi
-
-    if [[ "$installed_ver" == "$OTELCOL_VERSION" ]]; then
-        info "otelcol-contrib v${OTELCOL_VERSION} already installed, skipping."
-        return
-    fi
-
-    [[ -n "$installed_ver" ]] && info "Upgrading otelcol-contrib v${installed_ver} → v${OTELCOL_VERSION} ..."
-    [[ -z "$installed_ver" ]] && info "Downloading otelcol-contrib v${OTELCOL_VERSION} ..."
-
-    local tarball
-    if [[ "$OS" == "darwin" ]]; then
-        tarball="otelcol-contrib_${OTELCOL_VERSION}_darwin_${ARCH}.tar.gz"
-    else
-        tarball="otelcol-contrib_${OTELCOL_VERSION}_linux_${ARCH}.tar.gz"
-    fi
+    local tarball="otelcol-contrib_${OTELCOL_VERSION}_${OS}_${ARCH}.tar.gz"
     local url="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTELCOL_VERSION}/${tarball}"
-
-    local tmpdir
-    tmpdir="$(mktemp -d)"
-    curl -sSL -o "${tmpdir}/${tarball}" "$url"
-    tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
-
-    stop_service_if_running otel-collector
-    rm -f "${INSTALL_DIR}/otelcol-contrib"
-    cp "${tmpdir}/otelcol-contrib" "${INSTALL_DIR}/otelcol-contrib"
-    chmod +x "${INSTALL_DIR}/otelcol-contrib"
-    rm -rf "$tmpdir"
-
-    info "otelcol-contrib v${OTELCOL_VERSION} installed to ${INSTALL_DIR}/otelcol-contrib"
+    install_binary "otelcol-contrib" "$OTELCOL_VERSION" "otel-collector" \
+        "$url" "otelcol-contrib"
 }
 
 # ─── Generate Configuration Files ────────────────────────
@@ -305,12 +296,11 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable blackbox-exporter.service
-    systemctl enable otel-collector.service
-
-    # restart picks up new binaries + configs; start is a no-op if already running
-    systemctl restart blackbox-exporter.service
-    systemctl restart otel-collector.service
+    local svc
+    for svc in blackbox-exporter otel-collector; do
+        systemctl enable "${svc}.service"
+        systemctl restart "${svc}.service"
+    done
 
     info "Services (re)started: blackbox-exporter, otel-collector"
 }
@@ -366,6 +356,7 @@ main() {
     need_cmd tar
 
     detect_platform
+    detect_repo_tag
     collect_config
 
     install_blackbox_exporter
