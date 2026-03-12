@@ -50,6 +50,14 @@ detect_platform() {
 # ─── Interactive Configuration ────────────────────────────
 
 collect_config() {
+    # When piped through "curl | bash", stdin is the curl stream.
+    # Read user input from /dev/tty instead.
+    if [[ ! -t 0 ]]; then
+        exec 3</dev/tty
+    else
+        exec 3<&0
+    fi
+
     echo ""
     echo -e "${CYAN}══════════════════════════════════════════════════${NC}"
     echo -e "${CYAN}       Global Telemetry v2 — Configuration       ${NC}"
@@ -58,7 +66,7 @@ collect_config() {
 
     # Probe name
     ask "Probe name (unique node identifier, e.g. tokyo-1)"
-    read -r PROBE_NAME
+    read -r PROBE_NAME <&3
     [[ -z "$PROBE_NAME" ]] && error "Probe name is required"
 
     # Targets URL
@@ -68,7 +76,7 @@ collect_config() {
     echo "  Default: ${default_targets_url}"
     echo ""
     ask "Targets URL [Enter = default]"
-    read -r TARGETS_URL
+    read -r TARGETS_URL <&3
     TARGETS_URL="${TARGETS_URL:-$default_targets_url}"
 
     # Grafana Cloud
@@ -76,18 +84,19 @@ collect_config() {
     echo "  ── Grafana Cloud Credentials ──"
     echo ""
     ask "Prometheus Remote Write URL"
-    read -r REMOTE_WRITE_URL
+    read -r REMOTE_WRITE_URL <&3
     [[ -z "$REMOTE_WRITE_URL" ]] && error "Remote Write URL is required"
 
     ask "Grafana Cloud Username (Metrics instance ID)"
-    read -r GRAFANA_USERNAME
+    read -r GRAFANA_USERNAME <&3
     [[ -z "$GRAFANA_USERNAME" ]] && error "Username is required"
 
     ask "Grafana Cloud API Key"
-    read -rs GRAFANA_API_KEY
+    read -rs GRAFANA_API_KEY <&3
     echo ""
     [[ -z "$GRAFANA_API_KEY" ]] && error "API Key is required"
 
+    exec 3<&-
     echo ""
     info "Configuration collected."
 }
