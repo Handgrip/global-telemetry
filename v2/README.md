@@ -41,7 +41,7 @@ No custom code. Configuration only.
 ## Quick Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Handgrip/global-telemetry/main/v2/scripts/install.sh | sudo bash
+curl -sSL https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/scripts/install.sh | sudo bash
 ```
 
 The script will ask:
@@ -56,7 +56,14 @@ The script will ask:
 
 ## Targets Format (http_sd)
 
-The targets URL must return a JSON array in [Prometheus http_sd format](https://prometheus.io/docs/prometheus/latest/http_sd/):
+The targets URL must return a JSON array in [Prometheus http_sd format](https://prometheus.io/docs/prometheus/latest/http_sd/).
+
+> **Important**: The HTTP response must have `Content-Type: application/json`. GitHub Raw (`raw.githubusercontent.com`) returns `text/plain` and will **not** work. Use one of:
+> - **jsDelivr**: `https://cdn.jsdelivr.net/gh/USER/REPO@BRANCH/path/targets.json`
+> - **S3 / R2 / GCS** (auto-detects `.json` content type)
+> - Any web server that returns proper JSON headers
+
+Example:
 
 ```json
 [

@@ -12,7 +12,7 @@ ENV_FILE="${CONFIG_DIR}/env"
 BLACKBOX_VERSION="0.25.0"
 OTELCOL_VERSION="0.120.0"
 
-REPO_RAW="https://raw.githubusercontent.com/Handgrip/global-telemetry/main/v2/configs"
+REPO_RAW="https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/configs"
 
 # ─── Helpers ──────────────────────────────────────────────
 
@@ -47,9 +47,54 @@ detect_platform() {
     info "Detected platform: ${OS}/${ARCH}"
 }
 
-# ─── Interactive Configuration ────────────────────────────
+# ─── Configuration ────────────────────────────────────────
+
+DEFAULT_TARGETS_URL="https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/configs/targets.example.json"
+
+# Read a value: use env var if set, otherwise prompt interactively.
+#   read_val VAR_NAME "prompt text" [required|optional]
+read_val() {
+    local var_name="$1" prompt="$2" required="${3:-required}"
+    local current="${!var_name:-}"
+
+    if [[ -n "$current" ]]; then
+        info "${prompt}: ${current} (from env)"
+        return
+    fi
+
+    ask "$prompt"
+    read -r "$var_name" <&3
+    current="${!var_name:-}"
+
+    if [[ "$required" == "required" && -z "$current" ]]; then
+        error "${prompt} is required"
+    fi
+}
+
+# Same as read_val but hides input (for secrets)
+read_secret() {
+    local var_name="$1" prompt="$2"
+    local current="${!var_name:-}"
+
+    if [[ -n "$current" ]]; then
+        info "${prompt}: ******* (from env)"
+        return
+    fi
+
+    ask "$prompt"
+    read -rs "$var_name" <&3
+    echo ""
+    current="${!var_name:-}"
+    [[ -z "$current" ]] && error "${prompt} is required"
+}
 
 collect_config() {
+    # Load existing env file as defaults (re-install / update scenario)
+    if [[ -f "$ENV_FILE" ]]; then
+        info "Loading existing config from ${ENV_FILE}"
+        set -a; source "$ENV_FILE"; set +a
+    fi
+
     # When piped through "curl | bash", stdin is the curl stream.
     # Read user input from /dev/tty instead.
     if [[ ! -t 0 ]]; then
@@ -64,37 +109,25 @@ collect_config() {
     echo -e "${CYAN}══════════════════════════════════════════════════${NC}"
     echo ""
 
-    # Probe name
-    ask "Probe name (unique node identifier, e.g. tokyo-1)"
-    read -r PROBE_NAME <&3
-    [[ -z "$PROBE_NAME" ]] && error "Probe name is required"
+    # Priority: CLI env var > existing env file > interactive prompt
+    #   PROBE_NAME, TARGETS_URL, REMOTE_WRITE_URL,
+    #   GRAFANA_USERNAME, GRAFANA_API_KEY
 
-    # Targets URL
-    local default_targets_url="https://raw.githubusercontent.com/Handgrip/global-telemetry/main/v2/configs/targets.example.json"
-    echo ""
-    echo "  The targets URL serves a JSON file in Prometheus http_sd format."
-    echo "  Default: ${default_targets_url}"
-    echo ""
-    ask "Targets URL [Enter = default]"
-    read -r TARGETS_URL <&3
-    TARGETS_URL="${TARGETS_URL:-$default_targets_url}"
+    read_val  PROBE_NAME      "Probe name (unique node identifier, e.g. tokyo-1)"
 
-    # Grafana Cloud
+    echo ""
+    echo "  The targets URL must return Content-Type: application/json."
+    echo "  (GitHub Raw won't work — use jsDelivr, S3, or your own server)"
+    echo ""
+    read_val  TARGETS_URL     "Targets URL [Enter = default]" optional
+    TARGETS_URL="${TARGETS_URL:-$DEFAULT_TARGETS_URL}"
+
     echo ""
     echo "  ── Grafana Cloud Credentials ──"
     echo ""
-    ask "Prometheus Remote Write URL"
-    read -r REMOTE_WRITE_URL <&3
-    [[ -z "$REMOTE_WRITE_URL" ]] && error "Remote Write URL is required"
-
-    ask "Grafana Cloud Username (Metrics instance ID)"
-    read -r GRAFANA_USERNAME <&3
-    [[ -z "$GRAFANA_USERNAME" ]] && error "Username is required"
-
-    ask "Grafana Cloud API Key"
-    read -rs GRAFANA_API_KEY <&3
-    echo ""
-    [[ -z "$GRAFANA_API_KEY" ]] && error "API Key is required"
+    read_val    REMOTE_WRITE_URL  "Prometheus Remote Write URL"
+    read_val    GRAFANA_USERNAME  "Grafana Cloud Username (Metrics instance ID)"
+    read_secret GRAFANA_API_KEY   "Grafana Cloud API Key"
 
     exec 3<&-
     echo ""
@@ -104,12 +137,19 @@ collect_config() {
 # ─── Download & Install Binaries ─────────────────────────
 
 install_blackbox_exporter() {
-    if command -v blackbox_exporter &>/dev/null; then
-        warn "blackbox_exporter already installed, skipping download."
+    local installed_ver=""
+    if [[ -x "${INSTALL_DIR}/blackbox_exporter" ]]; then
+        installed_ver=$("${INSTALL_DIR}/blackbox_exporter" --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || true)
+    fi
+
+    if [[ "$installed_ver" == "$BLACKBOX_VERSION" ]]; then
+        info "blackbox_exporter v${BLACKBOX_VERSION} already installed, skipping."
         return
     fi
 
-    info "Downloading blackbox_exporter v${BLACKBOX_VERSION} ..."
+    [[ -n "$installed_ver" ]] && info "Upgrading blackbox_exporter v${installed_ver} → v${BLACKBOX_VERSION} ..."
+    [[ -z "$installed_ver" ]] && info "Downloading blackbox_exporter v${BLACKBOX_VERSION} ..."
+
     local tarball="blackbox_exporter-${BLACKBOX_VERSION}.${OS}-${ARCH}.tar.gz"
     local url="https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_VERSION}/${tarball}"
 
@@ -121,16 +161,22 @@ install_blackbox_exporter() {
     chmod +x "${INSTALL_DIR}/blackbox_exporter"
     rm -rf "$tmpdir"
 
-    info "blackbox_exporter installed to ${INSTALL_DIR}/blackbox_exporter"
+    info "blackbox_exporter v${BLACKBOX_VERSION} installed to ${INSTALL_DIR}/blackbox_exporter"
 }
 
 install_otelcol_contrib() {
-    if command -v otelcol-contrib &>/dev/null; then
-        warn "otelcol-contrib already installed, skipping download."
+    local installed_ver=""
+    if [[ -x "${INSTALL_DIR}/otelcol-contrib" ]]; then
+        installed_ver=$("${INSTALL_DIR}/otelcol-contrib" --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || true)
+    fi
+
+    if [[ "$installed_ver" == "$OTELCOL_VERSION" ]]; then
+        info "otelcol-contrib v${OTELCOL_VERSION} already installed, skipping."
         return
     fi
 
-    info "Downloading otelcol-contrib v${OTELCOL_VERSION} ..."
+    [[ -n "$installed_ver" ]] && info "Upgrading otelcol-contrib v${installed_ver} → v${OTELCOL_VERSION} ..."
+    [[ -z "$installed_ver" ]] && info "Downloading otelcol-contrib v${OTELCOL_VERSION} ..."
 
     local tarball
     if [[ "$OS" == "darwin" ]]; then
@@ -148,7 +194,7 @@ install_otelcol_contrib() {
     chmod +x "${INSTALL_DIR}/otelcol-contrib"
     rm -rf "$tmpdir"
 
-    info "otelcol-contrib installed to ${INSTALL_DIR}/otelcol-contrib"
+    info "otelcol-contrib v${OTELCOL_VERSION} installed to ${INSTALL_DIR}/otelcol-contrib"
 }
 
 # ─── Generate Configuration Files ────────────────────────
@@ -243,10 +289,14 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable --now blackbox-exporter.service
-    systemctl enable --now otel-collector.service
+    systemctl enable blackbox-exporter.service
+    systemctl enable otel-collector.service
 
-    info "Services started: blackbox-exporter, otel-collector"
+    # restart picks up new binaries + configs; start is a no-op if already running
+    systemctl restart blackbox-exporter.service
+    systemctl restart otel-collector.service
+
+    info "Services (re)started: blackbox-exporter, otel-collector"
 }
 
 # ─── Summary ─────────────────────────────────────────────

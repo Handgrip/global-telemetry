@@ -98,7 +98,7 @@ sudo scripts/install.sh
 ### One-Click Install (Linux)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Handgrip/global-telemetry/main/scripts/install.sh | sudo bash
+curl -sSL https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/scripts/install.sh | sudo bash
 ```
 
 ## Metrics Reference
