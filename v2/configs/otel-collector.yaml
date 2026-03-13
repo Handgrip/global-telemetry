@@ -27,6 +27,8 @@ receivers:
             # Use the target as the instance label
             - source_labels: [__param_target]
               target_label: instance
+            - source_labels: [__param_target]
+              target_label: target
             # __param_module is already set from SD labels
             # Route all scrapes to blackbox-exporter
             - target_label: __address__
