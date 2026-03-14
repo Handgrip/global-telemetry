@@ -41,8 +41,10 @@ No custom code. Configuration only.
 ## Quick Install
 
 ```bash
-curl -sSL https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/scripts/install.sh | sudo bash
+curl -sSL https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/scripts/bootstrap.sh | sudo bash
 ```
+
+The bootstrap script auto-detects the latest release tag and fetches the installer via `@{tag}`, bypassing jsDelivr's CDN cache.
 
 The script will ask:
 

@@ -4,6 +4,9 @@ set -euo pipefail
 # ─── Global Telemetry v2 Installer ───
 # Installs blackbox-exporter + otel-collector-contrib
 # and configures them for Grafana Cloud remote write.
+#
+# Prefer running via the bootstrap script (handles CDN cache busting):
+#   curl -sSL https://cdn.jsdelivr.net/gh/Handgrip/global-telemetry@main/v2/scripts/bootstrap.sh | bash
 
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/global-telemetry"
@@ -27,19 +30,24 @@ need_cmd() { command -v "$1" &>/dev/null || error "Required command not found: $
 
 # Detect the latest git tag via GitHub API.
 # Config files use the tag to bust jsDelivr cache; targets keep @main.
+# When launched from bootstrap.sh, REPO_TAG is already set — skip the API call.
 detect_repo_tag() {
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/tags?per_page=1"
-    local tag
-    tag=$(curl -sSL "$api_url" 2>/dev/null \
-        | sed -n 's/.*"name" *: *"\([^"]*\)".*/\1/p' \
-        | head -1) || true
-
-    if [[ -z "$tag" ]]; then
-        warn "Could not detect latest tag from GitHub API, falling back to 'main'"
-        REPO_TAG="main"
+    if [[ -n "${REPO_TAG:-}" ]]; then
+        info "Using tag from bootstrap: ${REPO_TAG}"
     else
-        REPO_TAG="$tag"
-        info "Latest release tag: ${REPO_TAG}"
+        local api_url="https://api.github.com/repos/${GITHUB_REPO}/tags?per_page=1"
+        local tag
+        tag=$(curl -sSL "$api_url" 2>/dev/null \
+            | sed -n 's/.*"name" *: *"\([^"]*\)".*/\1/p' \
+            | head -1) || true
+
+        if [[ -z "$tag" ]]; then
+            warn "Could not detect latest tag from GitHub API, falling back to 'main'"
+            REPO_TAG="main"
+        else
+            REPO_TAG="$tag"
+            info "Latest release tag: ${REPO_TAG}"
+        fi
     fi
 
     REPO_RAW="https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${REPO_TAG}/v2/configs"
