@@ -9,8 +9,8 @@ INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/global-telemetry"
 ENV_FILE="${CONFIG_DIR}/env"
 
-BLACKBOX_VERSION="0.25.0"
-OTELCOL_VERSION="0.120.0"
+BLACKBOX_VERSION="0.28.0"
+OTELCOL_VERSION="0.147.0"
 
 GITHUB_REPO="Handgrip/global-telemetry"
 
