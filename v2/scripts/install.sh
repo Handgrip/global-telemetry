@@ -264,7 +264,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/blackbox_exporter --config.file=${CONFIG_DIR}/blackbox.yml
+ExecStart=${INSTALL_DIR}/blackbox_exporter --config.file=${CONFIG_DIR}/blackbox.yml --log.level=warn
 Restart=always
 RestartSec=5
 
@@ -275,6 +275,15 @@ CapabilityBoundingSet=CAP_NET_RAW
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
+
+# Resource limits
+MemoryMax=128M
+MemoryHigh=96M
+
+# Journal log control
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blackbox-exporter
 
 [Install]
 WantedBy=multi-user.target
@@ -298,6 +307,15 @@ RestartSec=5
 
 NoNewPrivileges=true
 ProtectHome=true
+
+# Resource limits — matches memory_limiter (200 MiB) + headroom
+MemoryMax=350M
+MemoryHigh=300M
+
+# Journal log control
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=otel-collector
 
 [Install]
 WantedBy=multi-user.target

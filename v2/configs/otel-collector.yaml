@@ -61,6 +61,12 @@ receivers:
       system: {}
 
 processors:
+  # Protect against OOM — must be first in the pipeline
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 200
+    spike_limit_mib: 50
+
   # Detect host information (hostname, OS, etc.)
   resourcedetection:
     detectors: [system]
@@ -87,14 +93,23 @@ exporters:
       probe_name: "${env:PROBE_NAME}"
     resource_to_telemetry_conversion:
       enabled: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 5
+      queue_size: 1000
 
 service:
   extensions: [basicauth/grafana]
   pipelines:
     metrics:
       receivers: [prometheus, hostmetrics]
-      processors: [resourcedetection, resource/probe, batch]
+      processors: [memory_limiter, resourcedetection, resource/probe, batch]
       exporters: [prometheusremotewrite]
   telemetry:
     logs:
-      level: info
+      level: warn
