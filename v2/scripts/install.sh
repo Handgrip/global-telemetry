@@ -186,7 +186,8 @@ install_binary() {
 
     local tmpdir
     tmpdir="$(mktemp -d)"
-    curl -sSL -o "${tmpdir}/archive.tar.gz" "$url"
+    curl -fsSL -o "${tmpdir}/archive.tar.gz" "$url" \
+        || { rm -rf "$tmpdir"; error "Failed to download ${name} from ${url}"; }
     tar -xzf "${tmpdir}/archive.tar.gz" -C "$tmpdir"
 
     stop_service_if_running "$service_name"
@@ -220,10 +221,12 @@ generate_configs() {
 
     # Download config files from repo (single source of truth: v2/configs/)
     info "Downloading blackbox.yml ..."
-    curl -sSL -o "${CONFIG_DIR}/blackbox.yml" "${REPO_RAW}/blackbox.yml"
+    curl -fsSL -o "${CONFIG_DIR}/blackbox.yml" "${REPO_RAW}/blackbox.yml" \
+        || error "Failed to download blackbox.yml from ${REPO_RAW}/blackbox.yml"
 
     info "Downloading otel-collector.yaml ..."
-    curl -sSL -o "${CONFIG_DIR}/otel-collector.yaml" "${REPO_RAW}/otel-collector.yaml"
+    curl -fsSL -o "${CONFIG_DIR}/otel-collector.yaml" "${REPO_RAW}/otel-collector.yaml" \
+        || error "Failed to download otel-collector.yaml from ${REPO_RAW}/otel-collector.yaml"
 
     # Environment file — holds secrets and per-node config
     # OTel Collector reads these via ${env:VAR_NAME} syntax
