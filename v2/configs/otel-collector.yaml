@@ -93,11 +93,6 @@ exporters:
       probe_name: "${env:PROBE_NAME}"
     resource_to_telemetry_conversion:
       enabled: true
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 60s
-      max_elapsed_time: 300s
 
 service:
   extensions: [basicauth/grafana]
